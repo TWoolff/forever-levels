@@ -1,0 +1,12 @@
+## Interface: 16001
+## Title: Forever Levels
+## Notes: Saves your characters' finished quests, quest log, race, class, talents, level, reputation, profession skills, play times, hearthstone, gold, riding, bags, flight paths and dungeon kills for the Forever Levels guide, and shows your XP an hour, level-ups and biggest crits. The addon sends nothing; the guide shares only what you turn on.
+## Author: TWoolff
+## IconTexture: Interface\AddOns\ForeverLevels\icon
+## Version: v1.0.0
+## SavedVariables: ForeverLevelsDB
+## X-License: MIT
+## X-Curse-Project-ID: 1755681
+
+ForeverLevels.lua
+InGame.lua
