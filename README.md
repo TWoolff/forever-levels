@@ -6,7 +6,7 @@ By TWoolff. MIT licence. Get it from [CurseForge](https://www.curseforge.com/wow
 
 ## What it does
 
-- **It saves,** for every character you log in with, in one file for your whole account: every quest the character has finished and the ones in its quest log, their race, faction, class and level, the points spent in each talent tree, their profession skills, their standing with each reputation in their reputation panel, when and how fast they played and their time played, their hearthstone's inn and whether they know riding, the items in their bags, worn and in their bank, the flight paths they know, their dungeon boss kills, what it saw happen (quests picked up and handed in, bosses killed), when it last saved, and the game's version.
+- **It saves,** for every character you log in with, in one file for your whole account: every quest the character has finished and the ones in its quest log, their race, faction, class and level, the points spent in each talent tree, their profession skills, their standing with each reputation in their reputation panel, when and how fast they played and their time played, their hearthstone's inn and whether they know riding, the items in their bags, worn and in their bank, the flight paths they know, their dungeon boss kills, the game's own counts of their deaths, kills, gold, flights and more, when they learned to ride and trained each profession rank, what it saw happen (quests picked up and handed in, bosses killed), when it last saved, and the game's version.
 - **It never sends anything anywhere.** Addons can't reach the internet, and this one has nothing to send. The guide reads the file in your browser; nothing is uploaded.
 - **It shows three small things in the game,** each with its own checkbox in the game's Options > AddOns > Forever Levels, all on at first:
   - **XP an hour:** hover the XP bar, and its tooltip shows your XP an hour this session and the time to your next level at it. It's the guide's session pace: the session runs through `/reload`s and breaks of under an hour, and a stretch of over 30 minutes with no XP isn't counted. It shows once the session has 15 minutes of play that gained XP.
@@ -70,16 +70,19 @@ ForeverLevelsDB = {
   | `build` | `GetBuildInfo()`: the game's version, build and interface number |
   | `log`, `ready` | `C_QuestLog.GetNumQuestLogEntries()` and `GetInfo()`, headers skipped: the quest IDs in the quest log, and those `C_QuestLog.IsComplete()`, each sorted |
   | `sightings` | What it saw happen, oldest first, the newest 500 kept. Each has `kind`, `at` (epoch seconds) and the character's `level`. `pickup` (`QUEST_ACCEPTED`): `quest`; `npc`, the quest giver's NPC ID from `UnitGUID("npc")` at the `QUEST_DETAIL` before, none for an item; `xp`, `GetRewardXP()` there, none for a reading of 0 (a quest from one of Forever's objects reads 0 there though it pays); `map`, `x`, `y`, `C_Map`'s position to one decimal, none in a dungeon; `questLevel`, the log's `difficultyLevel`. `handIn` (`QUEST_COMPLETE`, the window at a turn-in, which may still be closed): `quest`, `xp`, `questLevel`, `npc`, `map`, `x`, `y`. `turnIn` (`QUEST_TURNED_IN`): `quest`, `xp`, its `xpReward`. While Well-Rested (spell 429959, from the Cozy Sleeping Bag) is up, which adds 1% a stack to the XP shown and paid, a `pickup`, `handIn` or `turnIn` has no `xp`. `kill` (`ENCOUNTER_END` with success): `encounter`, `name`, `difficulty`, `groupSize`, and `instance`, `GetInstanceInfo()`'s 8th value |
-  | `plays` | Play stretches, oldest first, the newest 200 kept. A login starts one; a `/reload` continues it. Each has `from` and `to`, each `{ at, level, xp, rested, money }` (`time()`, `UnitLevel`, `UnitXP`, `GetXPExhaustion()` or 0, `GetMoney()` in copper), `to` moved on at each `PLAYER_XP_UPDATE`, `PLAYER_MONEY` and logout; `idle`, the seconds of stretches over 30 minutes with no XP, the one since the last gain included; `idleBefore` and `lastXp`, which it's counted from; `skills`, each skill line's rank at the start; and `zone`, `C_Map.GetBestMapForUnit("player")`, moved at each zone change |
+  | `plays` | Play stretches, oldest first, the newest 200 kept. A login starts one; a `/reload` continues it. Each has `from` and `to`, each `{ at, level, xp, rested, money }` (`time()`, `UnitLevel`, `UnitXP`, `GetXPExhaustion()` or 0, `GetMoney()` in copper), `to` moved on at each `PLAYER_XP_UPDATE`, `PLAYER_MONEY` and logout; `idle`, the seconds of stretches over 30 minutes with no XP, the one since the last gain included; `idleBefore` and `lastXp`, which it's counted from; `skills`, each skill line's rank at the start; `zone`, `C_Map.GetBestMapForUnit("player")`, moved at each zone change; and `statistics` (1.1.0), the play's gain in each of the first eight of `statistics` that moved, counted from the login's or `/reload`'s first read, so a `/reload` adds nothing |
   | `levelUps` | `{ level, at, played }` at each `PLAYER_LEVEL_UP`: the level reached, when, and the total time played then. None for a level reached before this login's `/played` reply |
   | `played` | `{ total, level }`, in seconds: `/played`'s reply (`TIME_PLAYED_MSG`), counted forward with `GetTime()` at each save and at logout. Its chat line is hidden: see below |
   | `bind` | `GetBindLocation()`: the hearthstone's inn |
   | `riding`, `journeyman` | `C_SpellBook.IsSpellKnown()`: true once Apprentice (33388) or Journeyman Riding (33391) is known, and once Journeyman is. Neither goes back to false |
+  | `ridingAt`, `journeymanAt` | `{ at, played }` (1.1.0): when `riding` or `journeyman` was first seen turning true, and the total time played then, left out before this login's `/played` reply. None when it was already true at the character's first read |
+  | `ranks` | `{ skillLine, cap, at, played }` (1.1.0), oldest first: a profession rank trained, when a skill line's `max` reads above the one saved, a new profession's included, once each. None from a first read of the skills, or one after a read of none |
+  | `statistics` | `GetStatistic(id)`, as a whole number (1.1.0): the game's own counts since the character was made, by ID. Deaths (60), creatures killed (107), gold looted (333, copper), gold from quests (326), quests completed (98), flight paths taken (349), times hearthed (353), dungeons entered (932), deaths in dungeons (918), from falling (114) and from drowning (112), times camped (64222), largest hit taken (527), most gold owned (334), largest hit dealt (193) and largest heal cast (189). A count reading `--` is 0. The three in gold read as the game's money text, each coin a number and its icon (`1|TInterface\MoneyFrame\UI-GoldIcon:0:0:2:0|t 73|T…SilverIcon…|t 91|T…CopperIcon…|t`), and are saved as copper. A read where every one is 0 is skipped whole, in case the server hasn't answered yet. A count never goes down: a read below the saved one, or one that isn't a whole number, is skipped |
   | `bossKills` | `GetStatistic(14821, i)` for each of the Boss Kills category's statistics, as the Statistics frame walks them: each statistic's count above 0, by its ID |
   | `items` | Item IDs, each list sorted with no repeats: `bags` (the keyring, the backpack and its bags, `C_Container`), `worn` (`GetInventoryItemID` for slots 1–19), and `bank` with `bankAt`, the character bank as last seen open, since its slots read only then |
   | `flightPaths` | The TaxiNodes IDs known, sorted: at each `TAXIMAP_OPENED`, the nodes of `C_TaxiMap.GetAllTaxiNodes(GetTaxiMapID())` with `state` 0 (the flight master's own) or 1 (reachable), added to those saved. A flight master's map shows only its own continent, so each fills in from its own flight masters. Not `GetTaxiNodesForMap()`, which reads every flight path as discovered |
   | `session` | The session so far, for XP an hour: `{ xp, time, lastSeen }`, the XP gained, the seconds of play counted, and when it was last seen (epoch seconds) |
-  | `crits` | `{ damage, heal }`, each `{ amount, target, level }`: the biggest crit and crit heal, the target's name, and the character's level then |
+  | `crits` | `{ damage, heal }`, each `{ amount, target, level, at, played }`: the biggest crit and crit heal, the target's name, the character's level then, and (1.1.0) when, with the total time played |
 - **`show`**, for the whole account: `{ pace, levelUps, crits }`, the three checkboxes. The guide reads none of `show`, `session` or `crits`.
 
 ## When it reads
@@ -92,15 +95,15 @@ ForeverLevelsDB = {
 | `PLAYER_LEVEL_UP` | The level |
 | `UPDATE_FACTION` | The reputations, 1 s after the first of a burst |
 | `TRAIT_CONFIG_LIST_UPDATED`, `TRAIT_CONFIG_UPDATED`, `ACTIVE_COMBAT_CONFIG_CHANGED`, `ACTIVE_TALENT_GROUP_CHANGED`, `PLAYER_TALENT_UPDATE` | The talents, 1 s after the first of a burst |
-| `PLAYER_LOGOUT` | Only the time, the play's end and the time played |
-| `PLAYER_ENTERING_WORLD`, at a login or `/reload` | A new play, or the same one after a `/reload`; 5 s later, one `RequestTimePlayed()` |
+| `PLAYER_LOGOUT` | The time, the play's end, the time played and a last read of the `statistics` |
+| `PLAYER_ENTERING_WORLD`, at a login or `/reload` | A new play, or the same one after a `/reload`; 5 s later, one `RequestTimePlayed()` and the first read of the `statistics`, none before |
 | `TIME_PLAYED_MSG` | The time played, from any addon's request |
 | `QUEST_DETAIL`, `QUEST_ACCEPTED`, `QUEST_COMPLETE`, `QUEST_TURNED_IN`, `ENCOUNTER_END` | A sighting |
 | `QUEST_ACCEPTED`, `QUEST_REMOVED`, `QUEST_LOG_UPDATE`, `QUEST_TURNED_IN` | The quest log, 1 s after the last of a burst |
 | `PLAYER_XP_UPDATE`, `PLAYER_MONEY`, `ZONE_CHANGED_NEW_AREA` | The play |
 | `HEARTHSTONE_BOUND` | The hearthstone |
 | `LEARNED_SPELL_IN_SKILL_LINE` | Riding too |
-| `CRITERIA_UPDATE` | The boss statistics |
+| `CRITERIA_UPDATE` | The boss statistics and the `statistics`, 1 s after the first of a burst |
 | `BAG_UPDATE_DELAYED`, `PLAYER_EQUIPMENT_CHANGED`, `BANKFRAME_OPENED`, `PLAYERBANKSLOTS_CHANGED`, `BANKFRAME_CLOSED` | What it holds; the bank only while it's open |
 | `TAXIMAP_OPENED` | The flight paths, as the map opens |
 
@@ -117,6 +120,25 @@ What it shows in the game, it reads from these:
 | `UNIT_COMBAT`, for `target` and `player` | A crit the target takes, and a crit heal the player takes, out of a group |
 
 The game reads an empty quest list and no skills at logout, so they're never read then, and neither are the talents. An empty quest list never replaces one that isn't empty, since a finished quest stays finished. A read of no reputations is never saved either: every character has met its city, so it means the game hasn't loaded them yet. A header collapsed in the reputation panel hides the reputations under it, and the addon never opens one: a reputation saved before is then read by its ID, with `C_Reputation.GetFactionDataByID()`, but one under a header that's been collapsed since before its first read isn't saved until the header is opened. A client function that's missing or fails leaves its field as it was.
+
+## Checked in the live game
+
+Before 1.1.0 is tagged, played once in the live game with 1.1.0 installed, then checked against the file:
+
+| Check | Where it shows |
+|---|---|
+| The totals at login match the game's Statistics panel | `statistics`, read 5 s after login |
+| Most gold owned and gold looted read as copper | `statistics[334]` and `[333]` against the panel's gold, silver and copper |
+| A kill just before logging out, with no other change after it, is in the file | `statistics[107]`, and the last play's |
+| A kill adds 1 to creatures killed in the play's gain within 2 s | the last play's `statistics[107]` |
+| A death adds to deaths | `statistics[60]`, and the play's |
+| A `/reload` adds nothing to the play's gain | the last play's `statistics`, before and after |
+| Training a profession rank adds it to `ranks` | `ranks`' newest entry, its `cap` the new maximum |
+| A new biggest crit has `at` | `crits.damage.at` |
+
+Also played in this check, with the live check's test build beside it ([Check the client in the live game](https://github.com/TWoolff/wow-forever/issues/310) couldn't check them): lines 13's second System tab, 15, 18, 19 and 22 of the online and sharing build spec's §7. Riding at 40 (line 20) and line 31 at 60 are checked when a character gets there, and the release doesn't wait for them.
+
+Settled by the test build's file of 2026-11-08, 40 logins on five characters: `GetStatistic(id)` by ID reads as the Statistics frame's walk does; the counts are there at `PLAYER_LOGIN` already, never 0 first; they read at logout; gold comes as money text. Largest hit taken (527), largest hit dealt (193) and largest heal cast (189) read `--` on every character, so Forever doesn't seem to count them. They're still read, in case it starts.
 
 ## After a game patch
 

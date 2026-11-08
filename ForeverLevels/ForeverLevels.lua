@@ -1,6 +1,7 @@
 -- Forever Levels: saves each character's finished quests, quest log, race, class, talents,
 -- level, reputation, profession skills, play times, hearthstone, riding, what it holds, flight
--- paths and dungeon kills for the Forever Levels guide, https://foreverlevels.com.
+-- paths, dungeon kills and the game's own counts for the Forever Levels guide,
+-- https://foreverlevels.com.
 --
 -- Everything goes into ForeverLevelsDB, one account-wide saved variable. The game writes
 -- it to WTF/Account/<account>/SavedVariables/ForeverLevels.lua on /reload, logout and
@@ -33,8 +34,9 @@ local function try(f, ...)
   if ok then return plain(a), plain(b), plain(c), plain(d) end
 end
 
--- Time played, counted forward from the last /played reply (addon 1.1, below).
-local countPlayed
+-- Time played, counted forward from the last /played reply (addon 1.1, below), and when a thing
+-- was first seen, with the time played then (the next addon release, below).
+local countPlayed, stamp
 
 local function readSavedAt()
   local now = try(time)
@@ -81,6 +83,30 @@ local function readQuests()
   character.quests = list
 end
 
+-- A rank trained (the climb build spec §2): `{ skillLine, cap, at, played }` when a skill line's
+-- cap is above the one saved, a new profession's included, once each. A first read, or one after
+-- a read of none, adds none: an empty read can't be told from no professions.
+local function addRanks(skills)
+  local before = character.skills
+  if type(before) ~= "table" or #before == 0 then return end
+  local caps = {}
+  for _, s in ipairs(before) do caps[s.skillLine] = s.max end
+  local ranks = type(character.ranks) == "table" and character.ranks or {}
+  local function key(skillLine, cap) return tostring(skillLine) .. ":" .. tostring(cap) end
+  local seen = {}
+  for _, r in ipairs(ranks) do seen[key(r.skillLine, r.cap)] = true end
+  for _, s in ipairs(skills) do
+    local cap = caps[s.skillLine]
+    if type(s.max) == "number" and (cap == nil or type(cap) == "number" and s.max > cap)
+        and not seen[key(s.skillLine, s.max)] then
+      local rank = stamp()
+      rank.skillLine, rank.cap = s.skillLine, s.max
+      ranks[#ranks + 1] = rank
+    end
+  end
+  if #ranks > 0 then character.ranks = ranks end
+end
+
 -- Every profession learned, the guide's or not, sorted by skill line. Saved as read,
 -- empty included, since a profession can be unlearned.
 local function readSkills()
@@ -99,6 +125,7 @@ local function readSkills()
     end
   end
   table.sort(skills, function(x, y) return x.skillLine < y.skillLine end)
+  addRanks(skills)
   character.skills = skills
 end
 
@@ -190,6 +217,13 @@ local APPRENTICE_RIDING, JOURNEYMAN_RIDING = 33388, 33391
 local WELL_RESTED = 429959
 -- The Statistics frame's Boss Kills category.
 local BOSS_KILLS = 14821
+-- The climb's Statistics (the climb build spec §2), by ID: the 8 a play's gain is kept for
+-- (deaths, creatures killed, gold looted, gold from quests, quests completed, flight paths taken,
+-- times hearthed, dungeons entered), then the 8 kept as totals only (deaths in dungeons, from
+-- falling and from drowning, times camped, largest hit taken, most gold owned, largest hit dealt,
+-- largest heal cast). Gold is in copper.
+local PLAY_STATISTICS = { 60, 107, 333, 326, 98, 349, 353, 932 }
+local TOTAL_STATISTICS = { 918, 114, 112, 64222, 527, 334, 193, 189 }
 -- Enum.BagIndex: the keyring, the backpack, its four bags and the reagent bag; the character
 -- bank and its nine tabs. Never the account bank's, which isn't the character's.
 local BAGS = { -1, 0, 1, 2, 3, 4, 5 }
@@ -384,6 +418,13 @@ function countPlayed()
   if now and character then character.played = now end
 end
 
+-- `{ at, played }`: now, and the total time played, left out while this login has no reply yet.
+function stamp()
+  local now = playedNow()
+  return { at = try(time), played = now and now.total }
+end
+ns.stamp = stamp
+
 -- Play times ----------------------------------------------------------------------------------
 
 local function skillRanks()
@@ -475,10 +516,15 @@ local function known(spell)
   return try(IsSpellKnown, spell) == true
 end
 
--- Riding can't be unlearned, so neither reads false once it's true.
+-- Riding can't be unlearned, so neither reads false once it's true. Each is stamped when it's
+-- first seen turning true, never when it was already true at the first read (the climb build spec,
+-- decided 1).
 local function readRiding()
   local journeyman = known(JOURNEYMAN_RIDING)
-  character.riding = character.riding == true or journeyman or known(APPRENTICE_RIDING)
+  local riding = character.riding == true or journeyman or known(APPRENTICE_RIDING)
+  if riding and character.riding == false then character.ridingAt = stamp() end
+  if journeyman and character.journeyman == false then character.journeymanAt = stamp() end
+  character.riding = riding
   character.journeyman = character.journeyman == true or journeyman
 end
 
@@ -493,6 +539,77 @@ local function readBossKills()
     if type(id) == "number" and count and count > 0 then kills[id] = count end
   end
   character.bossKills = kills
+end
+
+-- The climb's Statistics: each total, and this play's gain for the 8 (the climb build spec §2).
+-- "--", a count not started, is 0. A read where every one is 0 is skipped whole: it's the counts
+-- before the server answers, and taken as a play's start it would put the character's whole life
+-- into the play's gain. A total never goes down: a read below it is skipped for that Statistic (the
+-- climb build spec, decided 2), and so is one that isn't a whole number. A play's gain counts from
+-- this login's or /reload's first good read, which adds nothing (decided 3): `playStart` holds that
+-- read and the play's gain then, in memory only, so a /reload adds nothing and a file from another
+-- computer doesn't put that computer's play into this one. Read only from 5 s after entering the
+-- world (`readingStatistics`), never at logout.
+local playStart, readingStatistics = {}, false
+
+-- A Statistic as a whole number, or none. "--", a count not started, is 0. Gold reads as the game's
+-- money text, each coin a number and its icon, a coin of 0 left out ("1|TInterface\MoneyFrame\
+-- UI-GoldIcon:0:0:2:0|t 73|T...SilverIcon...|t 91|T...CopperIcon...|t", the live check's file of
+-- 2026-11-08), and is turned into copper. Text with anything else in it reads as none.
+local COINS = { Gold = 10000, Silver = 100, Copper = 1 }
+local COIN = "([%d,]+)|T[^|]-UI%-(%a+)Icon[^|]*|t"
+
+local function statisticValue(value)
+  if value == "--" then return 0 end
+  if type(value) == "string" and value:find("|T", 1, true) then
+    if value:gsub(COIN, ""):find("%S") then return end
+    local copper, found = 0, false
+    for amount, coin in value:gmatch(COIN) do
+      local n = tonumber((amount:gsub(",", "")))
+      if not n or not COINS[coin] then return end
+      copper, found = copper + n * COINS[coin], true
+    end
+    return found and copper or nil
+  end
+  local n = tonumber(value)
+  if n and n >= 0 and n == math.floor(n) then return n end
+end
+
+local function readStatistics()
+  if not readingStatistics then return end
+  local read, any = {}, false
+  for _, list in ipairs({ PLAY_STATISTICS, TOTAL_STATISTICS }) do
+    for _, id in ipairs(list) do
+      local n = statisticValue(try(GetStatistic, id))
+      if n then
+        read[id] = n
+        if n > 0 then any = true end
+      end
+    end
+  end
+  if not any then return end
+  local totals = type(character.statistics) == "table" and character.statistics or {}
+  for id, n in pairs(read) do
+    if type(totals[id]) == "number" and n < totals[id] then read[id] = nil else totals[id] = n end
+  end
+  character.statistics = totals
+  local play = currentPlay()
+  if type(play) ~= "table" then return end
+  local gains = type(play.statistics) == "table" and play.statistics or {}
+  for _, id in ipairs(PLAY_STATISTICS) do
+    local n = read[id]
+    if n and not playStart[id] then
+      playStart[id] = { total = n, gain = gains[id] or 0 }
+    elseif n and n > playStart[id].total then
+      gains[id] = playStart[id].gain + n - playStart[id].total
+      play.statistics = gains
+    end
+  end
+end
+
+local function readCounts()
+  readBossKills()
+  readStatistics()
 end
 
 local function containerItems(bags)
@@ -576,7 +693,7 @@ local SOON = {
   QUEST_REMOVED = readLog,
   QUEST_LOG_UPDATE = readLog,
   HEARTHSTONE_BOUND = readBind,
-  CRITERIA_UPDATE = readBossKills,
+  CRITERIA_UPDATE = readCounts,
   PLAYER_EQUIPMENT_CHANGED = readWorn,
   PLAYERBANKSLOTS_CHANGED = readBank,
   UPDATE_FACTION = readReputation,
@@ -636,7 +753,13 @@ frame:SetScript("OnEvent", function(_, event, ...)
     local isInitialLogin, isReloadingUi = ...
     if isInitialLogin or isReloadingUi then
       startPlay(isReloadingUi)
-      C_Timer.After(5, requestPlayed)
+      -- The Statistics' first read rides on the same timer, so it's read straight away, not 1 s on.
+      C_Timer.After(5, function()
+        requestPlayed()
+        readingStatistics = true
+        readStatistics()
+        readSavedAt()
+      end)
     end
 
   elseif event == "QUEST_TURNED_IN" then
@@ -682,7 +805,9 @@ frame:SetScript("OnEvent", function(_, event, ...)
 
   elseif event == "PLAYER_LOGOUT" then
     -- Quests, skills, XP and gold read empty here, so only the play's end time, time played and the
-    -- time are set: the time the game writes the file.
+    -- time are set: the time the game writes the file. The Statistics still read here (the live
+    -- check's file, 2026-11-08), so they're read a last time first.
+    readStatistics()
     updatePlay(false, true)
     readSavedAt()
     inGame("loggingOut")

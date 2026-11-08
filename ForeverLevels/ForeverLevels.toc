@@ -1,9 +1,9 @@
 ## Interface: 16001
 ## Title: Forever Levels
-## Notes: Saves your characters' finished quests, quest log, race, class, talents, level, reputation, profession skills, play times, hearthstone, gold, riding, bags, flight paths and dungeon kills for the Forever Levels guide, and shows your XP an hour, level-ups and biggest crits. The addon sends nothing; the guide shares only what you turn on.
+## Notes: Saves your characters' finished quests, quest log, race, class, talents, level, reputation, profession skills, play times, hearthstone, gold, riding, bags, flight paths, dungeon kills, the game's own counts of deaths, kills, gold and more, and when you learn to ride and train each profession rank, for the Forever Levels guide, and shows your XP an hour, level-ups and biggest crits. The addon sends nothing; the guide shares only what you turn on.
 ## Author: TWoolff
 ## IconTexture: Interface\AddOns\ForeverLevels\icon
-## Version: v1.0.0
+## Version: v1.1.0
 ## SavedVariables: ForeverLevelsDB
 ## X-License: MIT
 ## X-Curse-Project-ID: 1755681

@@ -1,3 +1,7 @@
+## 1.1.0
+
+- Saves the game's own counts of your deaths, kills, gold, flights and more, and when you learn to ride and train each profession rank, for your climb in the guide.
+
 ## 1.0.0
 
 - First release: saves each character's finished quests, race, class, talents, level, reputation and profession skills for the Forever Levels guide.

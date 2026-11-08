@@ -8,8 +8,8 @@
 --   line in chat when a new one is well above the last.
 --
 -- It says what happened, never where to go: the guide stays on https://foreverlevels.com.
--- ForeverLevels.lua calls ns.loaded, ns.loggedIn, ns.levelUp and ns.loggingOut, and reads
--- /played for the level-up line; nothing here can stop it saving.
+-- ForeverLevels.lua calls ns.loaded, ns.loggedIn, ns.levelUp and ns.loggingOut, reads /played
+-- for the level-up line, and gives ns.stamp for a crit's time; nothing here can stop it saving.
 
 local _, ns = ...
 
@@ -168,7 +168,10 @@ local function record(kind, amount, target)
   local had = type(old) == "table" and type(old.amount) == "number"
   if had and amount <= old.amount then return end
   local level = plain(UnitLevel("player"))
-  crits[kind] = { amount = amount, target = target, level = level }
+  -- When it was set, and the time played then (the climb build spec §2).
+  local crit = type(ns.stamp) == "function" and ns.stamp() or {}
+  crit.amount, crit.target, crit.level = amount, target, level
+  crits[kind] = crit
   if not had or amount < old.amount * CRIT_STEP or type(level) ~= "number" or level < CRIT_LEVEL then return end
   if kind == "heal" then
     say("New biggest crit heal: " .. thousands(amount))
